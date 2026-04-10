@@ -3,15 +3,15 @@ Download all FactSheets of a given type from LeanIX via the local GraphQL proxy.
 
 Usage
 -----
-    uv run lean-ix download --type Application
-    uv run lean-ix download --type Application --subtype "Business Application"
-    uv run lean-ix download --type Application --subtype "Business Application" "Platform"
-    uv run lean-ix download --type Application --output apps.json
-    uv run lean-ix download --type Application --format csv --output apps.csv
-    uv run lean-ix download --type Application --list-subtypes
-    uv run lean-ix download --relations
-    uv run lean-ix download --type Application --relations
-    uv run lean-ix download --type Application --list-relations
+    dvm-leanix download --type Application
+    dvm-leanix download --type Application --subtype "Business Application"
+    dvm-leanix download --type Application --subtype "Business Application" "Platform"
+    dvm-leanix download --type Application --output apps.json
+    dvm-leanix download --type Application --format csv --output apps.csv
+    dvm-leanix download --type Application --list-subtypes
+    dvm-leanix download --relations
+    dvm-leanix download --type Application --relations
+    dvm-leanix download --type Application --list-relations
 
 How it works
 ------------

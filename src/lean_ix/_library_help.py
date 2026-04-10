@@ -14,9 +14,9 @@ to download FactSheets and relationships without going through the CLI.
 The **lean-ix proxy must be running** before you call any of these functions:
 
 ```powershell
-uv run lean-ix serve
+dvm-leanix serve
 # or with legacy SSL (default):
-uv run lean-ix serve --legacy-ssl
+dvm-leanix serve --legacy-ssl
 ```
 
 The proxy listens on `http://localhost:8765/graphql` by default.

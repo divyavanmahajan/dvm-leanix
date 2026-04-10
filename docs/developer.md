@@ -64,23 +64,23 @@ Invoke-RestMethod http://localhost:9222/json/version
 # Navigate to LeanIX and log in, then:
 
 # Run the proxy (loads saved token if available, otherwise extracts from browser)
-uv run lean-ix
+dvm-leanix
 
 # Explicit subcommand (same as above)
-uv run lean-ix serve
+dvm-leanix serve
 
 # Force extraction from browser even if a saved token exists
-uv run lean-ix serve --connect http://localhost:9222
+dvm-leanix serve --connect http://localhost:9222
 
 # Use a specific token, skip browser entirely
-uv run lean-ix serve --token "eyJhbGci..."
+dvm-leanix serve --token "eyJhbGci..."
 
 # Don't persist the token to disk
-uv run lean-ix serve --no-save
+dvm-leanix serve --no-save
 
 # If behind a corporate SSL proxy (Volvo / Prisma):
-uv run lean-ix diagnose                  # diagnose and get exact fix
-uv run lean-ix serve --legacy-ssl        # apply the fix
+dvm-leanix diagnose                  # diagnose and get exact fix
+dvm-leanix serve --legacy-ssl        # apply the fix
 ```
 
 ---
@@ -322,25 +322,25 @@ Invoke-RestMethod http://localhost:8765/health
 
 ```powershell
 # List all FactSheet types in the schema
-uv run lean-ix download --list-types
+dvm-leanix download --list-types
 
 # Download all Applications as JSON (to file)
-uv run lean-ix download --type Application --output apps.json
+dvm-leanix download --type Application --output apps.json
 
 # Download only "Business Application" subtype as CSV
-uv run lean-ix download --type Application --subtype "Business Application" --format csv --output apps.csv
+dvm-leanix download --type Application --subtype "Business Application" --format csv --output apps.csv
 
 # Multiple subtypes
-uv run lean-ix download --type Application --subtype "Business Application" Platform --output apps.json
+dvm-leanix download --type Application --subtype "Business Application" Platform --output apps.json
 
 # List available subtypes for a type
-uv run lean-ix download --type Application --list-subtypes
+dvm-leanix download --type Application --list-subtypes
 
 # Download with legacy SSL (corporate proxy)
-uv run lean-ix download --type Application --legacy-ssl --output apps.json
+dvm-leanix download --type Application --legacy-ssl --output apps.json
 
 # Use a non-default proxy port
-uv run lean-ix download --type ITComponent --proxy http://localhost:9000/graphql --output itc.json
+dvm-leanix download --type ITComponent --proxy http://localhost:9000/graphql --output itc.json
 ```
 
 ---
@@ -352,9 +352,9 @@ uv run lean-ix download --type ITComponent --proxy http://localhost:9000/graphql
 | `Could not connect to browser at http://localhost:9222` | Edge/Chrome already running — ignores `--remote-debugging-port` | Launch a **separate isolated instance** with `--user-data-dir=C:\Temp\edge-debug` |
 | `Timed out waiting for a Bearer token` | No LeanIX API calls detected | Log in to LeanIX; navigate to trigger API calls |
 | Queries return `TOKEN_EXPIRED` | LeanIX session expired | `POST /token/refresh` or restart with `--connect` |
-| Saved token immediately invalid | Token from a different workspace | Run `uv run lean-ix serve --connect` to force fresh extraction |
+| Saved token immediately invalid | Token from a different workspace | Run `dvm-leanix serve --connect` to force fresh extraction |
 | Port already in use | Another process on 8765 | Use `--port 9000` or another free port |
-| `SSL: CERTIFICATE_VERIFY_FAILED` | Corporate SSL inspection proxy | Run `uv run lean-ix diagnose`, then apply recommended fix (usually `--legacy-ssl`) |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | Corporate SSL inspection proxy | Run `dvm-leanix diagnose`, then apply recommended fix (usually `--legacy-ssl`) |
 | `Permission denied for fields: lx__...` | Your LeanIX user lacks read permission on those fields | Warning is shown; download proceeds with permitted fields only |
 
 ---

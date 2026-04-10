@@ -11,12 +11,12 @@ A local GraphQL proxy for SAP LeanIX. It connects to an already-logged-in browse
 uv sync
 
 # Run the proxy server
-uv run lean-ix               # serve (default subcommand)
-uv run lean-ix serve         # explicit
+dvm-leanix               # serve (default subcommand)
+dvm-leanix serve         # explicit
 
 # Other subcommands
-uv run lean-ix diagnose      # SSL connectivity diagnostics
-uv run lean-ix download --type Application --output apps.json
+dvm-leanix diagnose      # SSL connectivity diagnostics
+dvm-leanix download --type Application --output apps.json
 
 # Add a dependency
 uv add some-package          # auto-updates pyproject.toml and uv.lock

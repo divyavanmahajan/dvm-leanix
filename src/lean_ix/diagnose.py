@@ -1,7 +1,7 @@
 """
 SSL and connectivity diagnostics for lean-ix.
 
-Run with:  uv run lean-ix diagnose [--url URL] [--ca-bundle PATH]
+Run with:  dvm-leanix diagnose [--url URL] [--ca-bundle PATH]
 """
 
 from __future__ import annotations
@@ -282,7 +282,7 @@ def run_diagnostics(leanix_url: str, ca_bundle: Optional[str] = None) -> None:
         _info("The corporate proxy certificate is missing the 'Authority Key Identifier'")
         _info("extension, which Python 3.13+ rejects by default.")
         print(f"\n  Run lean-ix with:")
-        print(f"    uv run lean-ix --legacy-ssl")
+        print(f"    dvm-leanix --legacy-ssl")
         return
 
     if custom_ok:
@@ -313,11 +313,11 @@ def run_diagnostics(leanix_url: str, ca_bundle: Optional[str] = None) -> None:
     print("""
   Options:
   1. Ask your IT/network team for the corporate root CA PEM file, then:
-       uv run lean-ix --ca-bundle path\\to\\corporate-root-ca.pem
+       dvm-leanix --ca-bundle path\\to\\corporate-root-ca.pem
 
   2. Set the env var so all Python tools pick it up:
        $env:REQUESTS_CA_BUNDLE = "path\\to\\corporate-root-ca.pem"
 
   3. Use --no-verify-ssl as a last resort (insecure, traffic is not encrypted end-to-end):
-       uv run lean-ix --no-verify-ssl
+       dvm-leanix --no-verify-ssl
 """)

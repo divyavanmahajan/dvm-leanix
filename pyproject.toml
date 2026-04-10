@@ -1,6 +1,6 @@
 [project]
 name = "dvm-leanix"
-version = "0.3.0"
+version = "0.3.1"
 description = "SAP LeanIX GraphQL proxy with browser token extraction via Playwright"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,6 +35,7 @@ Source = "https://github.com/divyavanmahajan/dvm-leanix"
 "Bug Tracker" = "https://github.com/divyavanmahajan/dvm-leanix/issues"
 
 [project.scripts]
+dvm-leanix = "lean_ix.main:main"
 lean-ix = "lean_ix.main:main"
 
 [build-system]

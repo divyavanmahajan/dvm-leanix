@@ -10,7 +10,7 @@ lean-ix is a local GraphQL proxy for SAP LeanIX that extracts a Bearer token fro
 Everything starts here. The CLI is registered as the `lean-ix` script in `pyproject.toml`. Let's see what flags are available.
 
 ```powershell
-uv run lean-ix --help
+dvm-leanix --help
 ```
 
 ```output
@@ -34,7 +34,7 @@ lean-ix � SAP LeanIX GraphQL proxy CLI
 
 Usage
 -----
-    uv run lean-ix [OPTIONS]
+    dvm-leanix [OPTIONS]
 
 Options
 -------

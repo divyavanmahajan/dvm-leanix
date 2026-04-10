@@ -55,7 +55,7 @@ Log in to LeanIX in that browser window before proceeding.
 
 ```powershell
 cd lean-ix
-uv run lean-ix
+dvm-leanix
 ```
 
 You will be prompted for the LeanIX workspace URL if not provided via `--url`.  
@@ -70,7 +70,7 @@ Navigate to: **<http://localhost:8765/graphql>**
 ## CLI Options
 
 ```
-uv run lean-ix [OPTIONS]
+dvm-leanix [OPTIONS]
 
 Options:
   --url URL           LeanIX workspace base URL
@@ -86,22 +86,22 @@ Options:
 
 ```powershell
 # Use default URL, prompted if missing
-uv run lean-ix
+dvm-leanix
 
 # Specify workspace URL explicitly
-uv run lean-ix --url https://eu-10.leanix.net/MyOtherWorkspace
+dvm-leanix --url https://eu-10.leanix.net/MyOtherWorkspace
 
 # Corporate SSL proxy — point at exported CA bundle
-uv run lean-ix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
+dvm-leanix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
 
 # Disable SSL verification (quick test only)
-uv run lean-ix --no-verify-ssl
+dvm-leanix --no-verify-ssl
 
 # Use a known token (no browser needed)
-uv run lean-ix --token "eyJhbGci..."
+dvm-leanix --token "eyJhbGci..."
 
 # Different port
-uv run lean-ix --port 9000
+dvm-leanix --port 9000
 ```
 
 ---
@@ -203,13 +203,13 @@ $pem | Set-Content -Path "$env:USERPROFILE\.lean-ix\corporate-ca.pem" -Encoding 
 
 Then run lean-ix with the bundle:
 ```powershell
-uv run lean-ix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
+dvm-leanix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
 ```
 
 **Option 2 — Disable verification entirely (quick test only, not recommended)**
 
 ```powershell
-uv run lean-ix --no-verify-ssl
+dvm-leanix --no-verify-ssl
 ```
 
 **Token expired mid-session**  

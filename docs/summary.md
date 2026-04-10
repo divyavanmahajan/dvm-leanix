@@ -30,14 +30,14 @@ Invoke-RestMethod http://localhost:9222/json/version
 
 # Run the proxy
 cd lean-ix
-uv run lean-ix                          # prompts for URL, extracts token
-uv run lean-ix serve --url https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox
-uv run lean-ix serve --connect http://localhost:9222   # explicit CDP endpoint
-uv run lean-ix serve --token "eyJ..."   # skip browser, use known token
+dvm-leanix                          # prompts for URL, extracts token
+dvm-leanix serve --url https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox
+dvm-leanix serve --connect http://localhost:9222   # explicit CDP endpoint
+dvm-leanix serve --token "eyJ..."   # skip browser, use known token
 
 # If you get SSL errors (corporate proxy):
-uv run lean-ix diagnose                 # diagnose and get recommended fix
-uv run lean-ix serve --legacy-ssl       # fix for Volvo / Prisma SSL proxy
+dvm-leanix diagnose                 # diagnose and get recommended fix
+dvm-leanix serve --legacy-ssl       # fix for Volvo / Prisma SSL proxy
 ```
 
 Open **http://localhost:8765/graphql** → GraphiQL UI.
@@ -107,19 +107,19 @@ LeanIX GraphQL API docs: **https://help.sap.com/docs/leanix/ea/graphql-api**
 
 ```powershell
 # List all FactSheet types in the schema
-uv run lean-ix download --list-types
+dvm-leanix download --list-types
 
 # Download all Applications as JSON
-uv run lean-ix download --type Application --output apps.json
+dvm-leanix download --type Application --output apps.json
 
 # Download only "Business Application" sub-type as CSV
-uv run lean-ix download --type Application --subtype "Business Application" --format csv --output apps.csv
+dvm-leanix download --type Application --subtype "Business Application" --format csv --output apps.csv
 
 # Download all ITComponents
-uv run lean-ix download --type ITComponent --output itcomponents.json
+dvm-leanix download --type ITComponent --output itcomponents.json
 
 # List available subtypes for Application
-uv run lean-ix download --type Application --list-subtypes
+dvm-leanix download --type Application --list-subtypes
 ```
 
 ---
@@ -150,11 +150,11 @@ If you are behind a corporate SSL inspection proxy (e.g. Volvo Prisma):
 
 ```powershell
 # Step 1: diagnose
-uv run lean-ix diagnose
+dvm-leanix diagnose
 
 # Step 2: apply recommended fix (usually --legacy-ssl for Volvo)
-uv run lean-ix serve --legacy-ssl
-uv run lean-ix download --type Application --legacy-ssl --output apps.json
+dvm-leanix serve --legacy-ssl
+dvm-leanix download --type Application --legacy-ssl --output apps.json
 ```
 
 `--legacy-ssl` disables Python 3.13+ strict X.509 validation which rejects certificates missing the `Authority Key Identifier` extension — a common characteristic of corporate MITM proxy certificates.

@@ -3,7 +3,7 @@ lean-ix – SAP LeanIX GraphQL proxy CLI
 
 Usage
 -----
-    uv run lean-ix [OPTIONS]
+    dvm-leanix [OPTIONS]
 
 Options
 -------
@@ -47,7 +47,7 @@ def _prompt(prompt_text: str, default: str) -> str:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="lean-ix",
+        prog="dvm-leanix",
         description="SAP LeanIX GraphQL proxy with GraphiQL UI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,

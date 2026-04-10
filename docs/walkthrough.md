@@ -1,4 +1,4 @@
-﻿# lean-ix: Code Walkthrough
+# lean-ix: Code Walkthrough
 
 lean-ix is a local GraphQL proxy for SAP LeanIX that extracts a Bearer token from your logged-in browser via Playwright CDP, persists it to disk, serves a GraphiQL UI, diagnoses SSL issues, and downloads FactSheets to JSON/CSV — all from a single CLI command. This walkthrough steps through each module in execution order.
 
@@ -7,7 +7,7 @@ lean-ix is a local GraphQL proxy for SAP LeanIX that extracts a Bearer token fro
 Everything starts here. The CLI is registered as the `lean-ix` script in `pyproject.toml`. It uses subparsers for three commands: `serve` (default), `diagnose`, and `download`.
 
 ```powershell exec
-uv run lean-ix --help
+dvm-leanix --help
 ```
 
 ```output
@@ -237,7 +237,7 @@ When the diagnostics detect "Missing Authority Key Identifier", the summary prin
 ```
 [FAIL] Standard TLS failed: CERTIFICATE_VERIFY_FAILED
 [OK]   Legacy SSL mode works!
-RECOMMENDED FIX: uv run lean-ix serve --legacy-ssl
+RECOMMENDED FIX: dvm-leanix serve --legacy-ssl
 ```
 
 ## 7. Download CLI — `download.py`
@@ -410,18 +410,18 @@ Note: routes sharing a path (e.g. `GET /token` and `POST /token`) are de-duplica
 
 ```powershell
 # Start the proxy server
-uv run lean-ix serve --url https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox
-uv run lean-ix serve --legacy-ssl        # Volvo/Prisma SSL fix
+dvm-leanix serve --url https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox
+dvm-leanix serve --legacy-ssl        # Volvo/Prisma SSL fix
 
 # Diagnose SSL issues
-uv run lean-ix diagnose
+dvm-leanix diagnose
 
 # Download FactSheets
-uv run lean-ix download --list-types
-uv run lean-ix download --type Application --output apps.json
-uv run lean-ix download --type Application --subtype "Business Application" --format csv --output apps.csv
-uv run lean-ix download --type Application --list-subtypes
-uv run lean-ix download --type Application --legacy-ssl --output apps.json
+dvm-leanix download --list-types
+dvm-leanix download --type Application --output apps.json
+dvm-leanix download --type Application --subtype "Business Application" --format csv --output apps.csv
+dvm-leanix download --type Application --list-subtypes
+dvm-leanix download --type Application --legacy-ssl --output apps.json
 ```
 
 ### LeanIX GraphQL API docs
