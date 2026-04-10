@@ -1,0 +1,366 @@
+# Developer Guide
+
+## Project setup
+
+### Prerequisites
+
+- [uv](https://docs.astral.sh/uv/) >= 0.4
+- Python 3.14 (managed automatically by uv)
+- Chrome or Edge (for browser token extraction)
+
+### Install dependencies
+
+```powershell
+cd lean-ix
+uv sync
+```
+
+### Install Playwright browser binaries (one-time)
+
+```powershell
+uv run playwright install chromium
+```
+
+---
+
+## Project layout
+
+```
+lean-ix/
+├── pyproject.toml          # Project metadata and dependencies
+├── uv.lock                 # Locked dependency tree
+├── README.md               # End-user quick start
+├── docs/
+│   ├── summary.md          # Feature overview and quick-start
+│   ├── architecture.md     # Component diagrams and data flows
+│   ├── developer.md        # This file
+│   └── walkthrough.md      # Showboat executable code walkthrough
+└── src/
+    └── lean_ix/
+        ├── __init__.py
+        ├── main.py          # CLI entrypoint (subparsers: serve, diagnose, download)
+        ├── token.py         # Playwright CDP token extractor
+        ├── persistence.py   # Token save/load (~/.lean-ix/tokens.json)
+        ├── server.py        # FastAPI proxy app factory
+        ├── graphiql.py      # Static GraphiQL HTML (CDN, no build)
+        ├── diagnose.py      # SSL/TLS connectivity diagnostics
+        └── download.py      # FactSheet downloader CLI
+```
+
+---
+
+## Running locally
+
+```powershell
+# Start Edge with debugging enabled (do this once per session)
+# IMPORTANT: must use --user-data-dir to force a new isolated instance
+# Existing Edge/Chrome windows ignore --remote-debugging-port silently
+Start-Process "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" `
+  "--remote-debugging-port=9222 --user-data-dir=C:\Temp\edge-debug --no-first-run --no-default-browser-check"
+
+# Verify debugging port is open
+Invoke-RestMethod http://localhost:9222/json/version
+
+# Navigate to LeanIX and log in, then:
+
+# Run the proxy (loads saved token if available, otherwise extracts from browser)
+uv run lean-ix
+
+# Explicit subcommand (same as above)
+uv run lean-ix serve
+
+# Force extraction from browser even if a saved token exists
+uv run lean-ix serve --connect http://localhost:9222
+
+# Use a specific token, skip browser entirely
+uv run lean-ix serve --token "eyJhbGci..."
+
+# Don't persist the token to disk
+uv run lean-ix serve --no-save
+
+# If behind a corporate SSL proxy (Volvo / Prisma):
+uv run lean-ix diagnose                  # diagnose and get exact fix
+uv run lean-ix serve --legacy-ssl        # apply the fix
+```
+
+---
+
+## Modules in depth
+
+### `main.py` — CLI
+
+Entry point registered as the `lean-ix` script in `pyproject.toml`.
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `serve` (default) | Start the GraphQL proxy server |
+| `diagnose` | Test SSL connectivity and print recommended fix |
+| `download` | Download FactSheets to JSON or CSV |
+
+**Shared SSL flags** (available on every subcommand):
+
+| Flag | Description |
+|------|-------------|
+| `--ca-bundle PATH` | Custom PEM CA bundle (corporate proxy) |
+| `--no-verify-ssl` | Disable TLS verification entirely (insecure) |
+| `--legacy-ssl` | Relax Python 3.13+ strict X.509 — fixes Volvo Prisma certs |
+
+**`_resolve_ssl()` priority:**
+1. `--no-verify-ssl` → `False`
+2. `--legacy-ssl` → `SSLContext` with `VERIFY_X509_STRICT` disabled
+3. `--ca-bundle PATH` → `str` (path) or `SSLContext` (if combined with `--legacy-ssl`)
+4. `REQUESTS_CA_BUNDLE` / `SSL_CERT_FILE` env var → `str`
+5. Default → `True` (system CA bundle)
+
+**Adding new CLI flags:**
+Edit `parse_args()` and pass the value through `build_app()` or the relevant command function.
+
+---
+
+### `token.py` — Playwright CDP extractor
+
+Uses `playwright.async_api.async_playwright` in async mode.
+
+**Key functions:**
+
+| Function | Description |
+|----------|-------------|
+| `extract_token(leanix_base, cdp_url)` | Async. Main entry — tries storage then network. |
+| `get_token_sync(leanix_base, cdp_url)` | Sync wrapper via `asyncio.run()`. |
+| `_find_token_in_storage(context, leanix_base)` | Scans localStorage/sessionStorage for token keys. |
+| `_wait_for_token(context, leanix_host, leanix_base, timeout)` | Attaches request listener, navigates if needed, waits for Bearer header. |
+
+**Extending token detection:**
+If LeanIX changes where it stores tokens, update the key list in `_find_token_in_storage`:
+```python
+for key in ("access_token", "token", "id_token", "leanix_token", "your_new_key"):
+```
+
+---
+
+### `persistence.py` — Token store
+
+Reads and writes `~/.lean-ix/tokens.json`:
+```json
+{
+  "https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox": "eyJhbGci...",
+  "https://eu-10.leanix.net/AnotherWorkspace": "eyJhbGci..."
+}
+```
+
+The file is `chmod 600` on POSIX (owner-only read/write). On Windows it resides under `%USERPROFILE%\.lean-ix\`.
+
+**API:**
+```python
+from lean_ix.persistence import save_token, load_token, clear_token
+
+save_token(url, token)        # persist
+load_token(url) -> str|None   # retrieve
+clear_token(url)              # remove (called on confirmed 401)
+```
+
+---
+
+### `server.py` — FastAPI proxy
+
+`build_app(leanix_base, initial_token, cdp_url=None, ssl_verify=True) -> FastAPI`
+
+The app holds the current token in a `threading.Lock`-protected dict so it is safe to update at runtime. An `SSLContext` is accepted as `ssl_verify` for legacy mode.
+
+**Token expiry handling (401 from LeanIX):**
+
+```
+POST /graphql
+  │
+  └─► forward to LeanIX
+        │
+        ├─ 200 → return response
+        └─ 401 →
+              persistence.clear_token(url)
+              │
+              ├─ cdp_url set? → token.extract_token() [async]
+              │                  ├─ success → save + retry → return response
+              │                  └─ failure → 401 + JSON error with hint
+              └─ no cdp_url  → 401 + JSON error telling user to POST /token
+```
+
+**The 401 error body** clients receive looks like:
+```json
+{
+  "errors": [{
+    "message": "LeanIX token expired or invalid.",
+    "extensions": {
+      "code": "TOKEN_EXPIRED",
+      "hint": "POST /token/refresh to re-extract from browser, or POST /token with {\"token\": \"...\"}"
+    }
+  }]
+}
+```
+
+**`_try_refresh_token()`** is guarded by a `refreshing` flag so concurrent requests don't all simultaneously try to re-extract — only one refresh happens at a time.
+
+---
+
+### `graphiql.py` — GraphiQL UI
+
+A self-contained HTML string loaded from CDN (no npm, no build):
+- **React 18** from `unpkg.com/react@18`
+- **GraphiQL 3** from `unpkg.com/graphiql@3`
+
+The fetch URL is `window.location.origin + "/graphql"`, so it automatically targets the local proxy.
+A topbar banner links to the LeanIX GraphQL API docs: https://help.sap.com/docs/leanix/ea/graphql-api
+
+To upgrade GraphiQL, change the version pins in the `<script>` tags and the `<link>` stylesheet.
+
+---
+
+### `diagnose.py` — SSL diagnostics
+
+`run_diagnostics(leanix_url, ca_bundle=None)` runs these checks in sequence:
+
+1. **DNS** — resolves the LeanIX hostname
+2. **TCP** — opens a socket to port 443
+3. **TLS (raw)** — performs a raw `ssl.wrap_socket` to inspect the certificate chain
+4. **TLS (system CA)** — uses `ssl.create_default_context()` with no extras
+5. **TLS (legacy mode)** — same but with `VERIFY_X509_STRICT` disabled
+6. **httpx (system CA)** — full HTTP GET with httpx
+7. **httpx (legacy mode)** — full HTTP GET with legacy SSL context
+
+After all checks, prints a summary with the exact recommended fix command.
+
+**Detecting the Volvo/Prisma issue:**
+The check looks for certificates in the chain missing `Authority Key Identifier`. This is the extension Python 3.13+ requires but Prisma's MITM certificates omit.
+
+---
+
+### `download.py` — FactSheet downloader
+
+**Key functions:**
+
+| Function | Description |
+|----------|-------------|
+| `introspect_type(proxy_url, type_name)` | Returns field descriptors `{name, kind, type_name}` from the GraphQL schema |
+| `list_factsheet_types(proxy_url)` | Returns all `FactSheetType` enum values |
+| `build_query(type_name, type_fields, base_fields)` | Builds paginated query with inline fragment |
+| `fetch_all(proxy_url, query, type_name, subtypes, ...)` | Paginates and returns all records |
+| `write_json(records, dest)` | Writes JSON array |
+| `write_csv(records, dest)` | Writes CSV with flattened nested fields |
+| `run_download(...)` | Full orchestration function called by CLI |
+
+**Query structure built by `build_query()`:**
+
+```graphql
+query DownloadFactSheets($factSheetType: FactSheetType, $after: String) {
+  allFactSheets(factSheetType: $factSheetType, first: 100, after: $after) {
+    totalCount
+    pageInfo { hasNextPage endCursor }
+    edges {
+      node {
+        id name type category displayName description status updatedAt createdAt
+        tags { name }
+        completion { completion }
+        ... on Application {
+          alias businessCriticality lx__technicalDebt ...
+        }
+      }
+    }
+  }
+}
+```
+
+**Permission-denied field handling:**
+
+LeanIX returns partial data alongside GraphQL errors for restricted fields:
+```json
+{ "message": "No permission: fact_sheet_fields:read:application:lx__financial_critical_application" }
+```
+
+`fetch_all()` detects these on the first page, adds the field names to an exclusion set, rebuilds the query without them, and restarts pagination from page 1. A warning is printed listing the excluded fields.
+
+**Subtype filtering:**
+
+`--subtype` filters on the `category` field client-side (after fetching from the API). Use `--list-subtypes` to discover the available category values for a FactSheet type.
+
+**Field discovery logic:**
+
+`_leaf_kind()` recursively unwraps `NON_NULL` and `LIST` wrappers to find the base GraphQL kind. Only fields with kind `SCALAR` or `ENUM` are included in the auto-generated query — `OBJECT` and `INTERFACE` fields (connections/relations) are excluded.
+
+---
+
+## Adding a new dependency
+
+```powershell
+uv add some-package
+# uv automatically updates pyproject.toml and uv.lock
+```
+
+---
+
+## Manual token management
+
+```powershell
+# View current token (masked)
+Invoke-RestMethod http://localhost:8765/token
+
+# Replace token
+Invoke-RestMethod http://localhost:8765/token -Method POST `
+  -ContentType application/json `
+  -Body '{"token": "eyJhbGci..."}'
+
+# Trigger browser re-extraction
+Invoke-RestMethod http://localhost:8765/token/refresh -Method POST
+
+# Health check
+Invoke-RestMethod http://localhost:8765/health
+```
+
+---
+
+## Download command examples
+
+```powershell
+# List all FactSheet types in the schema
+uv run lean-ix download --list-types
+
+# Download all Applications as JSON (to file)
+uv run lean-ix download --type Application --output apps.json
+
+# Download only "Business Application" subtype as CSV
+uv run lean-ix download --type Application --subtype "Business Application" --format csv --output apps.csv
+
+# Multiple subtypes
+uv run lean-ix download --type Application --subtype "Business Application" Platform --output apps.json
+
+# List available subtypes for a type
+uv run lean-ix download --type Application --list-subtypes
+
+# Download with legacy SSL (corporate proxy)
+uv run lean-ix download --type Application --legacy-ssl --output apps.json
+
+# Use a non-default proxy port
+uv run lean-ix download --type ITComponent --proxy http://localhost:9000/graphql --output itc.json
+```
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Could not connect to browser at http://localhost:9222` | Edge/Chrome already running — ignores `--remote-debugging-port` | Launch a **separate isolated instance** with `--user-data-dir=C:\Temp\edge-debug` |
+| `Timed out waiting for a Bearer token` | No LeanIX API calls detected | Log in to LeanIX; navigate to trigger API calls |
+| Queries return `TOKEN_EXPIRED` | LeanIX session expired | `POST /token/refresh` or restart with `--connect` |
+| Saved token immediately invalid | Token from a different workspace | Run `uv run lean-ix serve --connect` to force fresh extraction |
+| Port already in use | Another process on 8765 | Use `--port 9000` or another free port |
+| `SSL: CERTIFICATE_VERIFY_FAILED` | Corporate SSL inspection proxy | Run `uv run lean-ix diagnose`, then apply recommended fix (usually `--legacy-ssl`) |
+| `Permission denied for fields: lx__...` | Your LeanIX user lacks read permission on those fields | Warning is shown; download proceeds with permitted fields only |
+
+---
+
+## Releasing a new version
+
+1. Bump `version` in `pyproject.toml`
+2. `uv sync` to update the lock file
+3. Commit and tag: `git tag v0.x.0`

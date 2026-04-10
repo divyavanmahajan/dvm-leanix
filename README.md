@@ -1,0 +1,216 @@
+# lean-ix — SAP LeanIX GraphQL Proxy
+
+A local proxy server that:
+- Connects to your **already-logged-in** browser via Playwright CDP
+- Extracts the active Bearer token from LeanIX network requests
+- Exposes a local GraphQL endpoint that proxies to LeanIX
+- Serves a **GraphiQL** UI for interactive exploration
+
+---
+
+## Prerequisites
+
+- Python 3.14+ and [uv](https://docs.astral.sh/uv/)
+- Google Chrome or Microsoft Edge installed
+- Playwright browsers installed (one-time step)
+
+```powershell
+# One-time: install Playwright browser binaries
+uv run playwright install chromium
+```
+
+---
+
+## Quick Start
+
+### Step 1 — Launch a debug Edge/Chrome instance
+
+> **If Edge or Chrome is already running**, you cannot simply add `--remote-debugging-port` to a
+> new shortcut — the flag is silently ignored and the port never opens. You must launch a
+> **separate isolated instance** using a different `--user-data-dir`.
+
+```powershell
+# Edge (recommended — already installed on Windows)
+Start-Process "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" `
+  "--remote-debugging-port=9222 --user-data-dir=C:\Temp\edge-debug --no-first-run --no-default-browser-check"
+
+# Chrome
+Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" `
+  "--remote-debugging-port=9222 --user-data-dir=C:\Temp\chrome-debug --no-first-run"
+```
+
+Verify the debug port is active before continuing:
+
+```powershell
+Invoke-RestMethod http://localhost:9222/json/version
+```
+
+You should see a JSON response with browser version info. If you get a connection error, the
+browser did not start with the debug port — check that you closed all existing windows of
+that browser first, or that the `--user-data-dir` path differs from your normal profile.
+
+Log in to LeanIX in that browser window before proceeding.
+
+### Step 2 — Start the proxy
+
+```powershell
+cd lean-ix
+uv run lean-ix
+```
+
+You will be prompted for the LeanIX workspace URL if not provided via `--url`.  
+The tool connects to Chrome, captures the Bearer token, then starts the local server.
+
+### Step 3 — Open GraphiQL
+
+Navigate to: **<http://localhost:8765/graphql>**
+
+---
+
+## CLI Options
+
+```
+uv run lean-ix [OPTIONS]
+
+Options:
+  --url URL           LeanIX workspace base URL
+                      (default: https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox)
+  --port PORT         Local port (default: 8765)
+  --connect CDP_URL   Chrome DevTools Protocol endpoint (default: http://localhost:9222)
+  --token TOKEN       Use this Bearer token directly — skips browser extraction
+  --ca-bundle PATH    PEM CA bundle (corporate SSL proxy fix)
+  --no-verify-ssl     Disable SSL verification entirely (insecure)
+```
+
+### Examples
+
+```powershell
+# Use default URL, prompted if missing
+uv run lean-ix
+
+# Specify workspace URL explicitly
+uv run lean-ix --url https://eu-10.leanix.net/MyOtherWorkspace
+
+# Corporate SSL proxy — point at exported CA bundle
+uv run lean-ix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
+
+# Disable SSL verification (quick test only)
+uv run lean-ix --no-verify-ssl
+
+# Use a known token (no browser needed)
+uv run lean-ix --token "eyJhbGci..."
+
+# Different port
+uv run lean-ix --port 9000
+```
+
+---
+
+## Endpoints
+
+| Method | Path       | Description                         |
+|--------|------------|-------------------------------------|
+| GET    | `/`        | Redirects to `/graphql`             |
+| GET    | `/graphql` | GraphiQL interactive UI             |
+| POST   | `/graphql` | GraphQL proxy to LeanIX             |
+| GET    | `/health`  | Health check + upstream URL         |
+| GET    | `/token`   | Show masked current Bearer token    |
+| POST   | `/token`   | Replace Bearer token at runtime     |
+
+### Replace token at runtime
+
+If the token expires, refresh it without restarting:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:8765/token -Method POST `
+  -ContentType "application/json" `
+  -Body '{"token": "eyJhbGci..."}'
+```
+
+---
+
+## LeanIX GraphQL API Reference
+
+Full API documentation: **<https://help.sap.com/docs/leanix/ea/graphql-api>**
+
+## Example GraphQL Query
+
+```graphql
+{
+  allFactSheets(first: 10) {
+    edges {
+      node {
+        id
+        name
+        type
+      }
+    }
+  }
+}
+```
+
+---
+
+## Architecture
+
+```
+Browser (logged in)
+    │
+    │  Chrome DevTools Protocol (port 9222)
+    ▼
+token.py  ── intercepts Authorization header ──► Bearer token
+    │
+    ▼
+server.py (FastAPI on localhost:8765)
+    │  POST /graphql  { query, variables }
+    │
+    │  Authorization: Bearer <token>
+    ▼
+https://eu-10.leanix.net/services/pathfinder/v1/graphql
+```
+
+---
+
+## Troubleshooting
+
+**"Could not connect to browser at http://localhost:9222"**  
+→ If Edge/Chrome is already running, the `--remote-debugging-port` flag is **silently ignored** by any new window you open — it only works on a fresh browser process. Launch a separate isolated instance with its own profile:
+
+```powershell
+Start-Process "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" `
+  "--remote-debugging-port=9222 --user-data-dir=C:\Temp\edge-debug --no-first-run --no-default-browser-check"
+```
+
+Then verify the port is open before retrying `lean-ix`:
+```powershell
+Invoke-RestMethod http://localhost:9222/json/version   # must return JSON
+```
+
+**"Timed out waiting for a Bearer token"**  
+→ No LeanIX API calls were detected. Make sure you are logged in and try navigating within LeanIX to trigger an API request.
+
+**`SSL: CERTIFICATE_VERIFY_FAILED` — self-signed certificate in chain**  
+→ Your corporate network uses SSL inspection (a man-in-the-middle proxy that replaces certificates with ones signed by an internal CA). Python's SSL stack rejects these because the corporate root CA is not in its trust bundle.
+
+**Option 1 — Export the corporate CA and point lean-ix at it (recommended)**
+
+```powershell
+# Export all trusted root CAs from the Windows certificate store to a PEM file
+$certs = Get-ChildItem -Path Cert:\LocalMachine\Root
+$pem = $certs | ForEach-Object { "-----BEGIN CERTIFICATE-----`n" + [Convert]::ToBase64String($_.RawData, 'InsertLineBreaks') + "`n-----END CERTIFICATE-----" }
+$pem | Set-Content -Path "$env:USERPROFILE\.lean-ix\corporate-ca.pem" -Encoding ascii
+```
+
+Then run lean-ix with the bundle:
+```powershell
+uv run lean-ix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
+```
+
+**Option 2 — Disable verification entirely (quick test only, not recommended)**
+
+```powershell
+uv run lean-ix --no-verify-ssl
+```
+
+**Token expired mid-session**  
+→ Navigate in the LeanIX browser tab (which triggers a token refresh) then POST the new token to `/token`, or restart `lean-ix`.
