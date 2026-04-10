@@ -55,6 +55,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    from importlib.metadata import version as _pkg_version, PackageNotFoundError
+    try:
+        _version = _pkg_version("dvm-leanix")
+    except PackageNotFoundError:
+        _version = "dev"
+
+    parser.add_argument(
+        "--version", "-V",
+        action="version",
+        version=f"%(prog)s {_version}",
+    )
     parser.add_argument(
         "--help-library",
         action="store_true",
