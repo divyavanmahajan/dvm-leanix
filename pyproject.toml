@@ -1,6 +1,6 @@
 [project]
 name = "dvm-leanix"
-version = "0.1.0"
+version = "0.3.0"
 description = "SAP LeanIX GraphQL proxy with browser token extraction via Playwright"
 readme = "README.md"
 requires-python = ">=3.10"
