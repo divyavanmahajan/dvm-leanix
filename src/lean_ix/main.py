@@ -55,6 +55,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command")
 
+    parser.add_argument(
+        "--help-library",
+        action="store_true",
+        default=False,
+        help="Print Markdown documentation for using lean_ix as a Python library and exit",
+    )
+
     # ── shared arguments factory ───────────────────────────────────────
     def _add_shared(p: argparse.ArgumentParser) -> None:
         p.add_argument(
@@ -307,6 +314,11 @@ def _extract_from_browser(leanix_url: str, cdp_url: str) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+
+    if getattr(args, "help_library", False):
+        from ._library_help import LIBRARY_HELP
+        print(LIBRARY_HELP)
+        return
 
     # ------------------------------------------------------------------ #
     # Route to subcommand                                                  #
