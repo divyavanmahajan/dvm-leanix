@@ -70,6 +70,14 @@ _SKIP_FIELDS = {
     "qualitySeal", "permissions",
 }
 
+# Substrings in an OBJECT type's name that mark it as a connection/edge (skip)
+_CONNECTION_TYPE_MARKERS = ("Connection", "Edge", "Relation")
+
+
+def _is_connection_type(type_name: str) -> bool:
+    """Return True if *type_name* looks like a GraphQL connection/edge/relation type."""
+    return any(marker in type_name for marker in _CONNECTION_TYPE_MARKERS)
+
 
 # ── Introspection ────────────────────────────────────────────────────────────
 
@@ -132,6 +140,40 @@ def introspect_type(proxy_url: str, type_name: str, ssl_verify: Any = True) -> l
     return result
 
 
+def _collect_object_subfields(
+    proxy_url: str,
+    type_fields: list[dict],
+    base_names: set[str],
+    ssl_verify: Any = True,
+) -> dict[str, list[str]]:
+    """
+    For each OBJECT-typed field that is not a connection/relation, introspect
+    its type and return a mapping of ``{GraphQL_type_name: [scalar_field_names]}``.
+    """
+    needed_types: set[str] = set()
+    for f in type_fields:
+        if (
+            f["kind"] == "OBJECT"
+            and f["name"] not in _SKIP_FIELDS
+            and f["name"] not in base_names
+            and not f["name"].startswith("rel")
+            and f["type_name"]
+            and not _is_connection_type(f["type_name"])
+        ):
+            needed_types.add(f["type_name"])
+
+    result: dict[str, list[str]] = {}
+    for tname in needed_types:
+        try:
+            sub_fields = introspect_type(proxy_url, tname, ssl_verify)
+            scalars = [sf["name"] for sf in sub_fields if sf["kind"] in _SCALAR_KINDS]
+            if scalars:
+                result[tname] = scalars
+        except Exception:
+            pass
+    return result
+
+
 def list_factsheet_types(proxy_url: str, ssl_verify: Any = True) -> list[str]:
     """Return all FactSheetType enum values from the schema."""
     body = _gql(proxy_url, _ALL_FACTSHEET_TYPES_QUERY, {}, ssl_verify)
@@ -143,11 +185,17 @@ def list_factsheet_types(proxy_url: str, ssl_verify: Any = True) -> list[str]:
 
 # ── Query building ────────────────────────────────────────────────────────────
 
-def build_query(type_name: str, type_fields: list[dict], base_fields: list[str]) -> str:
+def build_query(
+    type_name: str,
+    type_fields: list[dict],
+    base_fields: list[str],
+    object_subfields: dict[str, list[str]] | None = None,
+) -> str:
     """
     Build a paginated allFactSheets query that fetches:
     - Validated BaseFactSheet scalar fields (introspected at runtime)
     - All scalar / enum fields specific to *type_name* via an inline fragment
+    - All simple OBJECT fields (e.g. externalId) with their scalar sub-fields
     """
     # Build base field selection lines
     base_lines: list[str] = []
@@ -162,17 +210,28 @@ def build_query(type_name: str, type_fields: list[dict], base_fields: list[str])
     # Collect all base field names to avoid duplication in the fragment
     base_names = set(base_fields) | {"id", "name", "type", "category"}
 
-    specific_fields = [
-        f["name"]
-        for f in type_fields
-        if f["kind"] in _SCALAR_KINDS
-        and f["name"] not in _SKIP_FIELDS
-        and f["name"] not in base_names
-    ]
+    specific_lines: list[str] = []
+    for f in type_fields:
+        fname = f["name"]
+        fkind = f["kind"]
+        ftname = f.get("type_name", "")
+        if fname in _SKIP_FIELDS or fname in base_names:
+            continue
+        if fkind in _SCALAR_KINDS:
+            specific_lines.append(fname)
+        elif (
+            fkind == "OBJECT"
+            and not fname.startswith("rel")
+            and not _is_connection_type(ftname)
+            and object_subfields
+            and ftname in object_subfields
+        ):
+            sub = " ".join(object_subfields[ftname])
+            specific_lines.append(f"{fname} {{ {sub} }}")
 
     fragment = ""
-    if specific_fields:
-        lines = "\n          ".join(specific_fields)
+    if specific_lines:
+        lines = "\n          ".join(specific_lines)
         fragment = f"""
         ... on {type_name} {{
           {lines}
@@ -275,6 +334,7 @@ def fetch_all(
     verbose: bool = True,
     type_fields: list[dict] | None = None,
     base_fields: list[str] | None = None,
+    object_subfields: dict[str, list[str]] | None = None,
 ) -> list[dict]:
     """
     Page through allFactSheets and return a flat list of node dicts.
@@ -308,7 +368,7 @@ def fetch_all(
                     print(f"  Rebuilding query without {len(excluded_fields)} excluded field(s)…")
                 # Rebuild with excluded fields added to skip set
                 filtered_fields = [f for f in type_fields if f["name"] not in excluded_fields]
-                query = build_query(type_name, filtered_fields, base_fields)
+                query = build_query(type_name, filtered_fields, base_fields, object_subfields)
                 # Restart from scratch
                 records = []
                 cursor = None
@@ -750,7 +810,14 @@ def run_download(
         sys.exit(1)
 
     scalar_count = sum(1 for f in type_fields if f["kind"] in _SCALAR_KINDS)
-    print(f"  Found {len(type_fields)} fields ({scalar_count} scalar/enum) on {type_name}")
+    object_count = sum(
+        1 for f in type_fields
+        if f["kind"] == "OBJECT"
+        and not f["name"].startswith("rel")
+        and not _is_connection_type(f.get("type_name", ""))
+        and f["name"] not in _SKIP_FIELDS
+    )
+    print(f"  Found {len(type_fields)} fields ({scalar_count} scalar/enum, {object_count} structured object) on {type_name}")
 
     # Build validated base field list from actual BaseFactSheet schema
     base_field_names_in_schema = {f["name"] for f in base_fs_fields}
@@ -789,13 +856,19 @@ def run_download(
 
     # ── Build and run query ─────────────────────────────────────────────────
     print("Building query from schema…")
-    query = build_query(type_name, type_fields, base_fields)
+    base_names_set = set(base_fields) | {"id", "name", "type", "category"}
+    object_subfields = _collect_object_subfields(proxy_url, type_fields, base_names_set, ssl_verify)
+    if object_subfields:
+        print(f"  Expanding {len(object_subfields)} structured object type(s): "
+              f"{', '.join(sorted(object_subfields))}")
+    query = build_query(type_name, type_fields, base_fields, object_subfields)
 
     print(f"Downloading fact sheets…")
     try:
         records = fetch_all(
             proxy_url, query, type_name, subtypes, ssl_verify,
             verbose=True, type_fields=type_fields, base_fields=base_fields,
+            object_subfields=object_subfields,
         )
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
