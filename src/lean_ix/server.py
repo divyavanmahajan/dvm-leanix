@@ -42,7 +42,7 @@ def build_app(
 
     Args:
         leanix_base:   LeanIX workspace base URL,
-                       e.g. "https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox"
+                       e.g. "https://eu-10.leanix.net/YourInstance"
         initial_token: Bearer token obtained from the browser session or OAuth2 exchange.
         cdp_url:       Chrome DevTools Protocol endpoint for auto-refresh via browser,
                        e.g. "http://localhost:9222". Pass None to disable browser refresh.

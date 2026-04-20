@@ -74,7 +74,7 @@ dvm-leanix [OPTIONS]
 
 Options:
   --url URL           LeanIX workspace base URL
-                      (default: https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox)
+                      (default: https://eu-10.leanix.net/YourInstance)
   --port PORT         Local port (default: 8765)
   --connect CDP_URL   Chrome DevTools Protocol endpoint (default: http://localhost:9222)
   --token TOKEN       Use this Bearer token directly — skips browser extraction

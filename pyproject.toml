@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
-    { name = "Divya Van Mahajan", email = "divya.van.mahajan@volvo.com" },
+    { name = "Divya Van Mahajan", email = "divyavanmahajan@users.noreply.github.com" },
 ]
 keywords = ["leanix", "graphql", "proxy", "sap", "enterprise-architecture"]
 classifiers = [

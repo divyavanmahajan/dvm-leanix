@@ -128,7 +128,7 @@ async def extract_token(leanix_base: str, cdp_url: str = CDP_URL) -> str:
 
     Args:
         leanix_base: Base URL of the LeanIX workspace,
-                     e.g. "https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox"
+                     e.g. "https://eu-10.leanix.net/YourInstance"
         cdp_url:     Chrome DevTools Protocol endpoint, default "http://localhost:9222"
 
     Returns:

@@ -51,5 +51,5 @@ src/lean_ix/
 - **`download.py` only includes `SCALAR` and `ENUM` fields** in auto-generated queries. `_leaf_kind()` recursively unwraps `NON_NULL`/`LIST` wrappers to find the base kind; `OBJECT`/`INTERFACE` fields (connections/relations) are excluded.
 - **`graphiql.py` is a plain string** — no template engine, no build. To upgrade GraphiQL, change the version pins in the `<script>` and `<link>` tags.
 - **Token storage keys to check** when LeanIX changes auth: `access_token`, `token`, `id_token`, `leanix_token` in `_find_token_in_storage()` inside `token.py`.
-- **`--legacy-ssl`** disables `VERIFY_X509_STRICT` (needed on Volvo's network where the Prisma SSL inspection proxy issues certs missing `Authority Key Identifier`, rejected by Python 3.13+).
+- **`--legacy-ssl`** disables `VERIFY_X509_STRICT` (needed on corporate network where the Prisma SSL inspection proxy issues certs missing `Authority Key Identifier`, rejected by Python 3.13+).
 - **Subtype filtering** in `download.py` is client-side on the `category` field — it is not a server-side filter.
