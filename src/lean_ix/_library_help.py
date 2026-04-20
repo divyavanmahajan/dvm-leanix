@@ -44,8 +44,8 @@ run_download(
     proxy_url="http://localhost:8765/graphql",
     type_name="Application",
     subtypes=[],            # [] = all subtypes
-    output_path="apps.csv", # None = auto-generate {Type}.csv
-    fmt="csv",              # "csv" or "json"
+    output_path="apps.json", # None = auto-generate {Type}.json
+    fmt="json",              # "json" (default) or "csv"
     list_subtypes=False,
     list_types=False,
     limit=None,             # int to stop early, e.g. limit=10 for testing
@@ -59,8 +59,8 @@ run_download(
     proxy_url="http://localhost:8765/graphql",
     type_name="Application",
     subtypes=["Business_Application", "Platform"],
-    output_path="business_apps.csv",
-    fmt="csv",
+    output_path="business_apps.json",
+    fmt="json",
     list_subtypes=False,
     list_types=False,
 )
@@ -73,8 +73,8 @@ run_download(
     proxy_url="http://localhost:8765/graphql",
     type_name="Application",
     subtypes=[],
-    output_path="sample.csv",
-    fmt="csv",
+    output_path="sample.json",
+    fmt="json",
     list_subtypes=False,
     list_types=False,
     limit=10,   # stop after 10 records — avoids fetching the full dataset

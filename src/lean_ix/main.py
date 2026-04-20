@@ -177,7 +177,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description=(
             "Introspects the GraphQL schema, builds a query with all scalar fields\n"
             "for the requested FactSheet type, paginates through all results, and\n"
-            "writes them as JSON or CSV.\n\n"
+            "writes them as JSON (default) or CSV.\n\n"
             "Docs: https://help.sap.com/docs/leanix/ea/graphql-api"
         ),
     )
@@ -209,14 +209,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--output", "-o",
         metavar="FILE",
         default=None,
-        help="Write output to FILE (default: {Type}.csv)",
+        help="Write output to FILE (default: {Type}.json)",
     )
     dl.add_argument(
         "--format", "-f",
         choices=["json", "csv"],
-        default="csv",
+        default="json",
         dest="fmt",
-        help="Output format: csv (default) or json",
+        help="Output format: json (default) or csv",
     )
     dl.add_argument(
         "--list-types",

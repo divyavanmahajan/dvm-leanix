@@ -21,7 +21,7 @@ How it works
    (``... on Application { ... }``), plus the common BaseFactSheet fields.
 3. Pages through all results (100 per page) using cursor-based pagination.
 4. Optionally filters the results by ``category`` (subtype) client-side.
-5. Writes the collected records to stdout or a file as JSON or CSV.
+5. Writes the collected records to stdout or a file as JSON (default) or CSV.
 
 Relationship download (--relations)
 ------------------------------------
@@ -293,11 +293,34 @@ def _gql(
     return resp.json()
 
 
+def _field_from_path(path: list) -> str:
+    """Extract the FactSheet field name from a GraphQL error path.
+
+    The path typically looks like::
+
+        ["allFactSheets", "edges", <int>, "node", "<fieldName>", ...]
+
+    Returns the first string segment that follows a ``"node"`` segment,
+    or an empty string when the path does not match the expected pattern.
+    """
+    for i, segment in enumerate(path):
+        if segment == "node" and i + 1 < len(path):
+            candidate = path[i + 1]
+            if isinstance(candidate, str):
+                return candidate
+    return ""
+
+
 def _extract_permission_denied_fields(errors: list[dict]) -> set[str]:
     """
-    Parse LeanIX permission error messages of the form:
-      "No permission: fact_sheet_fields:read:application:FIELD_NAME"
-    and return the set of denied field names.
+    Parse LeanIX permission error messages and return the set of denied field names.
+
+    Handles two formats:
+
+    * ``"No permission: fact_sheet_fields:read:application:FIELD_NAME"`` —
+      field name is the last colon-separated segment.
+    * Any other ``"No permission: …"`` error (e.g. ``ace:read_acl``) —
+      field name is extracted from the GraphQL error ``path`` array.
     """
     denied: set[str] = set()
     for e in errors:
@@ -305,6 +328,11 @@ def _extract_permission_denied_fields(errors: list[dict]) -> set[str]:
         if msg.startswith("No permission: fact_sheet_fields:read:"):
             # Last colon-separated segment is the field name
             field = msg.rsplit(":", 1)[-1].strip()
+            if field:
+                denied.add(field)
+        elif "No permission:" in msg:
+            # Other permission errors (e.g. ace:read_acl) — use the path
+            field = _field_from_path(e.get("path") or [])
             if field:
                 denied.add(field)
     return denied
@@ -315,7 +343,7 @@ def _check_errors(body: dict) -> None:
     errors = body.get("errors") or []
     non_permission = [
         e for e in errors
-        if not e.get("message", "").startswith("No permission: fact_sheet_fields")
+        if "No permission:" not in e.get("message", "")
     ]
     if non_permission:
         msgs = "; ".join(e.get("message", str(e)) for e in non_permission)
