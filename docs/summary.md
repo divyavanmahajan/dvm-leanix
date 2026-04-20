@@ -7,13 +7,14 @@ A local proxy tool that bridges your **already-authenticated browser session** t
 ## What it does
 
 1. **Connects to your browser** — via Chrome DevTools Protocol (Playwright `connect_over_cdp`), attaching to a Chrome/Edge window where you are already logged in to LeanIX.
-2. **Extracts the Bearer token** — by intercepting an outbound LeanIX API request and reading the `Authorization` header. Falls back to checking `localStorage`/`sessionStorage`.
-3. **Persists the token** — saves the token to `~/.lean-ix/tokens.json` keyed by workspace URL, so subsequent runs skip the browser-extraction step.
-4. **Runs a local proxy server** — FastAPI on `localhost:8765` (configurable) that adds the Bearer token to every forwarded GraphQL request.
-5. **Serves GraphiQL** — a full interactive IDE at `GET /graphql` for writing and testing queries against LeanIX.
-6. **Handles token expiry** — detects `401 Unauthorized` responses from LeanIX, auto-retries token extraction, and prompts the user if re-extraction is needed.
-7. **Diagnoses SSL issues** — `lean-ix diagnose` tests DNS → TCP → TLS → httpx connectivity and recommends the exact fix for corporate SSL inspection proxies.
-8. **Downloads FactSheets** — `lean-ix download` introspects the schema, builds an optimised query for any FactSheet type, paginates through all results, and writes JSON or CSV. Permission-denied fields are auto-detected and excluded on retry.
+2. **Or uses a Technical User API key** — exchange a LeanIX API key for a Bearer token via OAuth2 client-credentials, with no browser required. Set `--api-token` or the `LEANIX_API_TOKEN` env var.
+3. **Extracts the Bearer token** — by intercepting an outbound LeanIX API request and reading the `Authorization` header. Falls back to checking `localStorage`/`sessionStorage`.
+4. **Persists the token** — saves the token to `~/.lean-ix/tokens.json` keyed by workspace URL, so subsequent runs skip the browser-extraction step.
+5. **Runs a local proxy server** — FastAPI on `localhost:8765` (configurable) that adds the Bearer token to every forwarded GraphQL request.
+6. **Serves GraphiQL** — a full interactive IDE at `GET /graphql` for writing and testing queries against LeanIX.
+7. **Handles token expiry** — detects `401 Unauthorized` responses from LeanIX, auto-refreshes via API key (if set) or browser CDP, and prompts the user if re-extraction is needed.
+8. **Diagnoses SSL issues** — `lean-ix diagnose` tests DNS → TCP → TLS → httpx connectivity and recommends the exact fix for corporate SSL inspection proxies.
+9. **Downloads FactSheets** — `lean-ix download` introspects the schema, builds an optimised query for any FactSheet type, paginates through all results, and writes JSON or CSV. Permission-denied fields are auto-detected and excluded on retry.
 
 ---
 
@@ -30,14 +31,19 @@ Invoke-RestMethod http://localhost:9222/json/version
 
 # Run the proxy
 cd lean-ix
-dvm-leanix                          # prompts for URL, extracts token
-dvm-leanix serve --url https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox
+dvm-leanix                          # prompts for URL, extracts token from browser
+dvm-leanix serve --url https://eu-10.leanix.net/InformationTechnologyABSandbox
 dvm-leanix serve --connect http://localhost:9222   # explicit CDP endpoint
-dvm-leanix serve --token "eyJ..."   # skip browser, use known token
+dvm-leanix serve --token "eyJ..."   # skip browser, use known Bearer token
+
+# Use Technical User API key (no browser needed)
+dvm-leanix serve --api-token "your-api-key"
+$env:LEANIX_API_TOKEN = "your-api-key"
+dvm-leanix serve
 
 # If you get SSL errors (corporate proxy):
 dvm-leanix diagnose                 # diagnose and get recommended fix
-dvm-leanix serve --legacy-ssl       # fix for Volvo / Prisma SSL proxy
+dvm-leanix serve --legacy-ssl       # fix for  / Prisma SSL proxy
 ```
 
 Open **http://localhost:8765/graphql** → GraphiQL UI.
@@ -75,19 +81,20 @@ LeanIX GraphQL API docs: **https://help.sap.com/docs/leanix/ea/graphql-api**
 
 | Flag              | Default                                                      | Description                                      |
 |-------------------|--------------------------------------------------------------|--------------------------------------------------|
-| `--url`           | `https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox` | LeanIX workspace base URL                      |
+| `--url`           | `https://eu-10.leanix.net/InformationTechnologyABSandbox` | LeanIX workspace base URL                      |
 | `--ca-bundle`     | _(none)_                                                     | Path to PEM CA bundle (corporate proxy)          |
 | `--no-verify-ssl` | _(off)_                                                      | Disable SSL verification entirely (insecure)     |
-| `--legacy-ssl`    | _(off)_                                                      | Relax Python 3.13+ strict X.509 — fixes Volvo proxy |
+| `--legacy-ssl`    | _(off)_                                                      | Relax Python 3.13+ strict X.509 — fixes  proxy |
 
 ### `serve` subcommand
 
-| Flag          | Default                 | Description                            |
-|---------------|-------------------------|----------------------------------------|
-| `--port`      | `8765`                  | Local server port                      |
-| `--connect`   | `http://localhost:9222` | Chrome DevTools Protocol endpoint      |
-| `--token`     | _(none)_                | Use this Bearer token directly         |
-| `--no-save`   | _(off)_                 | Do not persist the token to disk       |
+| Flag          | Default                 | Description                                      |
+|---------------|-------------------------|--------------------------------------------------|
+| `--port`      | `8765`                  | Local server port                                |
+| `--connect`   | `http://localhost:9222` | Chrome DevTools Protocol endpoint                |
+| `--token`     | _(none)_                | Use this Bearer token directly                   |
+| `--api-token` | _(none)_                | LeanIX Technical User API key (also: `LEANIX_API_TOKEN` env var) |
+| `--no-save`   | _(off)_                 | Do not persist the token to disk                 |
 
 ### `download` subcommand
 
@@ -129,30 +136,36 @@ dvm-leanix download --type Application --list-subtypes
 ```
 startup
   │
+  ├─► --token provided?  → use it directly
+  │
+  ├─► --api-token / LEANIX_API_TOKEN set?
+  │     └─ YES → OAuth2 exchange → Bearer token (no browser)
+  │
   ├─► load ~/.lean-ix/tokens.json
   │     ├─ token found → use it (skip browser)
   │     └─ not found  → extract from browser via CDP
   │
-  ├─► save token to disk
+  ├─► save token to disk (unless --no-save)
   │
   │   [during proxying]
   │
   └─► 401 from LeanIX?
-        ├─ CDP available → auto-re-extract → retry request
-        └─ no CDP       → return 401 with message, prompt user to POST /token/refresh
+        ├─ api_key set  → OAuth2 re-exchange  → retry request
+        ├─ CDP available → auto-re-extract    → retry request
+        └─ neither       → return 401 with message, prompt user to POST /token/refresh
 ```
 
 ---
 
 ## SSL / Corporate proxy
 
-If you are behind a corporate SSL inspection proxy (e.g. Volvo Prisma):
+If you are behind a corporate SSL inspection proxy (e.g.  Prisma):
 
 ```powershell
 # Step 1: diagnose
 dvm-leanix diagnose
 
-# Step 2: apply recommended fix (usually --legacy-ssl for Volvo)
+# Step 2: apply recommended fix (usually --legacy-ssl for )
 dvm-leanix serve --legacy-ssl
 dvm-leanix download --type Application --legacy-ssl --output apps.json
 ```

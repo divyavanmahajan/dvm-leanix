@@ -57,13 +57,14 @@ Responsibilities:
 - Orchestrate startup: load token → extract if missing → start server
 - Route `diagnose` → `diagnose.run_diagnostics()`, `download` → `download.run_download()`
 
-### `token.py` — Playwright CDP token extractor
+### `token.py` — Playwright CDP token extractor + OAuth2 exchange
 
 Responsibilities:
-- Connect to an existing browser via `playwright.chromium.connect_over_cdp(cdp_url)`
-- **Fast path**: scan `localStorage` / `sessionStorage` for known token keys
-- **Slow path**: attach `request` event listeners across all pages; wait for a LeanIX API request and capture the `Authorization: Bearer …` header
-- If no LeanIX page is open, navigate to the workspace URL to trigger API calls
+- **Browser path**: Connect to an existing browser via `playwright.chromium.connect_over_cdp(cdp_url)`
+  - **Fast path**: scan `localStorage` / `sessionStorage` for known token keys
+  - **Slow path**: attach `request` event listeners across all pages; wait for a LeanIX API request and capture the `Authorization: Bearer …` header
+  - If no LeanIX page is open, navigate to the workspace URL to trigger API calls
+- **API key path**: `get_token_from_api_key(api_key, leanix_base, ssl_verify)` — POST to `/services/mtm/v1/oauth2/token` with `auth=("apitoken", key)` and `grant_type=client_credentials`, returns the Bearer access token. No browser required.
 
 ### `persistence.py` — Token store
 
@@ -79,6 +80,9 @@ Responsibilities:
 - Hold the current Bearer token in a thread-safe mutable state
 - Accept GraphQL requests and forward them to the LeanIX upstream
 - Detect `401 Unauthorized` responses and trigger `_try_refresh_token()`
+  - If `api_key` is set: re-exchange via OAuth2 (`get_token_from_api_key`) — no browser needed
+  - Else if `cdp_url` is set: re-extract from browser via CDP
+  - Else: return `TOKEN_EXPIRED` error with hint
 - `refreshing` flag prevents concurrent refresh storms — only one refresh attempt runs at a time
 - Serve the GraphiQL UI HTML at `GET /graphql`
 - Expose management endpoints: `/token`, `/token/refresh`, `/health`
@@ -94,7 +98,7 @@ Includes a topbar link to the LeanIX GraphQL API docs at https://help.sap.com/do
 Responsibilities:
 - Step through connectivity checks: DNS → TCP port 443 → raw TLS → TLS with system CA → TLS with legacy mode → httpx GET
 - Print `[OK]` / `[FAIL]` / `[WARN]` status for each check
-- Detect "Missing Authority Key Identifier" in the cert chain (root cause for Volvo/Prisma proxy failures)
+- Detect "Missing Authority Key Identifier" in the cert chain (root cause for proxy failures)
 - Export the corporate CA chain to a PEM file for use with `--ca-bundle`
 - Print a summary with the exact recommended fix command
 
@@ -114,20 +118,27 @@ Responsibilities:
 ```
 main()
   │
+  ├─ args.token provided? ────────────────────────────────────────► use_token()
+  │
+  ├─ api_key (--api-token / LEANIX_API_TOKEN env)?
+  │    └─ YES → token.get_token_from_api_key(api_key, url)
+  │               ├─ success ──────────────────────────────────────► use_token()
+  │               └─ failure → exit 1
+  │
   ├─ persistence.load_token(url)
-  │    ├─ found  ──────────────────────────────────────────► use_token()
+  │    ├─ found  ──────────────────────────────────────────────────► use_token()
   │    └─ not found
   │         └─ token.extract_token(url, cdp_url)
   │              ├─ connect_over_cdp(cdp_url)
   │              ├─ scan localStorage/sessionStorage
-  │              │    ├─ found  ──────────────────────────► use_token()
+  │              │    ├─ found  ──────────────────────────────────► use_token()
   │              │    └─ not found
   │              │         └─ listen for network requests
-  │              │              └─ capture Bearer header ──► use_token()
+  │              │              └─ capture Bearer header ──────────► use_token()
   │              └─ (timeout → RuntimeError → exit 1)
   │
   └─ persistence.save_token(url, token)
-       └─ build_app(url, token, cdp_url) → uvicorn.run()
+       └─ build_app(url, token, cdp_url, api_key=api_key) → uvicorn.run()
 ```
 
 ## Token flow (expiry / 401)
@@ -140,11 +151,16 @@ POST /graphql
   ├─ response.status == 401 ?
   │    └─ YES
   │         ├─ persistence.clear_token(url)
-  │         ├─ cdp_url configured?
-  │         │    ├─ YES → token.extract_token(url, cdp_url)
+  │         ├─ api_key configured?
+  │         │    ├─ YES → token.get_token_from_api_key(api_key, url)
   │         │    │         ├─ success → save + retry request
   │         │    │         └─ failure → 401 with { "expired": true, "hint": "..." }
-  │         │    └─ NO  → 401 with { "expired": true, "hint": "POST /token/refresh" }
+  │         │    └─ NO
+  │         │         ├─ cdp_url configured?
+  │         │         │    ├─ YES → token.extract_token(url, cdp_url)
+  │         │         │    │         ├─ success → save + retry request
+  │         │         │    │         └─ failure → 401 with { "expired": true, "hint": "..." }
+  │         │         │    └─ NO  → 401 with { "expired": true, "hint": "POST /token/refresh" }
   │
   └─ return response to caller
 ```
@@ -187,7 +203,7 @@ _resolve_ssl(args)
   └─ default          → True                   (system CA / certifi)
 ```
 
-`--legacy-ssl` is needed on Volvo's network because the Prisma SSL inspection proxy issues certificates missing the `Authority Key Identifier` extension. Python 3.13+ enforces `VERIFY_X509_STRICT` which rejects these.
+`--legacy-ssl` is needed on corporate network because the Prisma SSL inspection proxy issues certificates missing the `Authority Key Identifier` extension. Python 3.13+ enforces `VERIFY_X509_STRICT` which rejects these.
 
 ---
 

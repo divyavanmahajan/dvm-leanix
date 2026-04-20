@@ -99,7 +99,7 @@ When an API key is provided, `dvm-leanix`:
 | `https://{HOST}/services/pathfinder/v1/graphql/upload` | GraphQL file uploads (multipart) |
 | `https://{HOST}/services/mtm/v1/oauth2/token` | OAuth2 token exchange (Technical User) |
 
-For the Volvo sandbox workspace:  
+For the europe sandbox workspace:  
 `HOST = eu-10.leanix.net`
 
 ---

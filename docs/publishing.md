@@ -39,37 +39,28 @@ Do this once before the first release.
 
 ## Releasing a new version
 
-### Step 1 — Bump the version
+Version numbers are derived automatically from git tags via **hatch-vcs**. There is no version field to edit manually.
 
-Edit `pyproject.toml`:
-
-```toml
-[project]
-version = "0.2.0"
-```
-
-### Step 2 — Sync the lock file
+### Step 1 — Commit your changes
 
 ```powershell
-uv sync
-```
-
-### Step 3 — Commit the version bump
-
-```powershell
-git add pyproject.toml uv.lock
-git commit -m "Bump version to 0.2.0"
+git add -A
+git commit -m "chore: prepare vX.Y.Z"
 git push
 ```
 
-### Step 4 — Tag and push
+### Step 2 — Tag and push
 
 ```powershell
-git tag v0.2.0
-git push origin v0.2.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 Pushing the tag triggers the **Publish to PyPI** workflow automatically.
+
+> **Version format:** hatch-vcs uses the tag directly (e.g. `v0.5.0` → `0.5.0`).  
+> Between tags the version is a dev string such as `0.5.1.dev3+g1a2b3c4`.  
+> Run `uv run python -c "from lean_ix import __version__; print(__version__)"` to check the current computed version.
 
 ---
 
