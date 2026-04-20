@@ -12,16 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import re
-from typing import Optional
 
-from playwright.async_api import async_playwright, Browser, BrowserContext
-
+import httpx
+from playwright.async_api import Browser, BrowserContext, async_playwright
 
 CDP_URL = "http://localhost:9222"
 _TOKEN_PATTERN = re.compile(r"^Bearer (.+)$")
 
 
-async def _find_token_in_storage(context: BrowserContext, leanix_base: str) -> Optional[str]:
+async def _find_token_in_storage(context: BrowserContext, leanix_base: str) -> str | None:
     """Try to extract the token from localStorage/sessionStorage on a LeanIX page."""
     for page in context.pages:
         if leanix_base.split("/")[2] not in page.url:  # check hostname
@@ -40,7 +39,7 @@ async def _intercept_token(
     context: BrowserContext,
     leanix_host: str,
     timeout: float = 30.0,
-) -> Optional[str]:
+) -> str | None:
     """
     Navigate to the LeanIX workspace on an existing page and intercept the
     Authorization header from the first matching outbound request.
@@ -188,3 +187,54 @@ async def extract_token(leanix_base: str, cdp_url: str = CDP_URL) -> str:
 def get_token_sync(leanix_base: str, cdp_url: str = CDP_URL) -> str:
     """Synchronous wrapper around extract_token."""
     return asyncio.run(extract_token(leanix_base, cdp_url))
+
+
+def get_token_from_api_key(
+    api_key: str,
+    leanix_base: str,
+    ssl_verify: bool | str = True,
+) -> str:
+    """
+    Exchange a LeanIX Technical User API key for a Bearer access token.
+
+    The API key is the secret generated in the LeanIX administration area under
+    Technical Users.  It is exchanged via OAuth2 client-credentials grant at:
+      https://{host}/services/mtm/v1/oauth2/token
+
+    Args:
+        api_key:      The LeanIX API key (Technical User secret).
+        leanix_base:  LeanIX workspace URL, e.g. "https://eu-10.leanix.net/MyWS".
+        ssl_verify:   SSL verification — True (default), False, or path to PEM bundle.
+
+    Returns:
+        The raw Bearer access token string.
+
+    Raises:
+        RuntimeError: If the OAuth2 exchange fails.
+    """
+    host = "/".join(leanix_base.split("/")[:3])  # https://eu-10.leanix.net
+    oauth_url = f"{host}/services/mtm/v1/oauth2/token"
+
+    try:
+        response = httpx.post(
+            oauth_url,
+            auth=("apitoken", api_key),
+            data={"grant_type": "client_credentials"},
+            verify=ssl_verify,
+            timeout=30.0,
+        )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        raise RuntimeError(
+            f"OAuth2 token exchange failed ({exc.response.status_code}): "
+            f"{exc.response.text}"
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(f"OAuth2 token exchange error: {exc}") from exc
+
+    token = response.json().get("access_token")
+    if not token:
+        raise RuntimeError(
+            f"OAuth2 response did not contain 'access_token'. Response: {response.text}"
+        )
+    return token

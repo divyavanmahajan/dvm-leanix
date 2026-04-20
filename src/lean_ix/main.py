@@ -23,12 +23,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import ssl
 import sys
 from pathlib import Path
-from typing import Optional, Union
 
 import uvicorn
-
 
 DEFAULT_URL = "https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox"
 DEFAULT_PORT = 8765
@@ -55,7 +54,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     subparsers = parser.add_subparsers(dest="command")
 
-    from importlib.metadata import version as _pkg_version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version as _pkg_version
     try:
         _version = _pkg_version("dvm-leanix")
     except PackageNotFoundError:
@@ -143,6 +143,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="TOKEN",
         default=None,
         help="Use this Bearer token directly (skips browser extraction)",
+    )
+    serve.add_argument(
+        "--api-token",
+        metavar="API_KEY",
+        default=None,
+        dest="api_key",
+        help=(
+            "LeanIX Technical User API key. Exchanges the key for a Bearer token "
+            "via OAuth2 (no browser needed). Also reads from env var LEANIX_API_TOKEN."
+        ),
     )
     serve.add_argument(
         "--no-save",
@@ -247,13 +257,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         dest="cdp_url", help=argparse.SUPPRESS)
     parser.add_argument("--token", metavar="TOKEN", default=None,
                         help=argparse.SUPPRESS)
+    parser.add_argument("--api-token", metavar="API_KEY", default=None,
+                        dest="api_key", help=argparse.SUPPRESS)
     parser.add_argument("--no-save", action="store_true", default=False,
                         help=argparse.SUPPRESS)
 
     return parser.parse_args(argv)
 
 
-def _resolve_ssl(args: argparse.Namespace) -> Union[bool, str, "ssl.SSLContext"]:
+def _resolve_ssl(args: argparse.Namespace) -> bool | str | ssl.SSLContext:
     """
     Determine the ssl_verify value to pass to build_app.
 
@@ -271,7 +283,7 @@ def _resolve_ssl(args: argparse.Namespace) -> Union[bool, str, "ssl.SSLContext"]
 
     legacy = getattr(args, "legacy_ssl", False)
 
-    def _make_ctx(ca_file: Optional[str] = None) -> "_ssl.SSLContext":
+    def _make_ctx(ca_file: str | None = None) -> _ssl.SSLContext:
         ctx = _ssl.create_default_context()
         if ca_file:
             ctx.load_verify_locations(cafile=ca_file)
@@ -312,7 +324,7 @@ def _extract_from_browser(leanix_url: str, cdp_url: str) -> str:
     print(
         "\nConnecting to browser to extract Bearer token…\n"
         "  Make sure Chrome/Edge is running with:\n"
-        f"    chrome.exe --remote-debugging-port=9222 --user-data-dir=C:\\Temp\\chrome-debug\n"
+        "    chrome.exe --remote-debugging-port=9222 --user-data-dir=C:\\Temp\\chrome-debug\n"
         "  and that you are already logged in to LeanIX.\n"
     )
     from .token import get_token_sync
@@ -385,14 +397,33 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------ #
     # Obtain Bearer token                                                  #
     # ------------------------------------------------------------------ #
-    from .persistence import clear_token, load_token, save_token
+    from .persistence import load_token, save_token
 
-    token: Optional[str] = None
+    token: str | None = None
+
+    # Resolve API key: CLI flag takes priority, then env var
+    api_key: str | None = getattr(args, "api_key", None) or os.environ.get("LEANIX_API_TOKEN")
 
     if args.token:
-        # Explicit token provided via CLI — use it directly
+        # Explicit Bearer token provided via CLI — use it directly
         token = args.token
         print("  Token            : provided via --token flag")
+
+    elif api_key:
+        # Technical User API key — exchange for a Bearer token via OAuth2
+        print("  Token source     : Technical User API key (OAuth2)")
+        from .token import get_token_from_api_key
+        try:
+            ssl_for_oauth: bool | str = (
+                False if ssl_verify is False
+                else ssl_verify if isinstance(ssl_verify, str)
+                else True
+            )
+            token = get_token_from_api_key(api_key, leanix_url, ssl_for_oauth)
+            print("  Token            : obtained via OAuth2 client-credentials")
+        except RuntimeError as exc:
+            print(f"\nError: {exc}", file=sys.stderr)
+            sys.exit(1)
 
     else:
         # Try loading a previously saved token
@@ -413,7 +444,7 @@ def main(argv: list[str] | None = None) -> None:
     # ------------------------------------------------------------------ #
     from .server import build_app
 
-    app = build_app(leanix_url, token, cdp_url=args.cdp_url, ssl_verify=ssl_verify)
+    app = build_app(leanix_url, token, cdp_url=args.cdp_url, ssl_verify=ssl_verify, api_key=api_key)
 
     host = "127.0.0.1"
     refresh_note = (

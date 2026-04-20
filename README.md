@@ -78,6 +78,8 @@ Options:
   --port PORT         Local port (default: 8765)
   --connect CDP_URL   Chrome DevTools Protocol endpoint (default: http://localhost:9222)
   --token TOKEN       Use this Bearer token directly — skips browser extraction
+  --api-token KEY     LeanIX Technical User API key — exchanges for Bearer token via OAuth2
+                      (no browser needed; also read from env var LEANIX_API_TOKEN)
   --ca-bundle PATH    PEM CA bundle (corporate SSL proxy fix)
   --no-verify-ssl     Disable SSL verification entirely (insecure)
 ```
@@ -91,13 +93,20 @@ dvm-leanix
 # Specify workspace URL explicitly
 dvm-leanix --url https://eu-10.leanix.net/MyOtherWorkspace
 
+# Use Technical User API key (no browser needed)
+dvm-leanix --api-token "your-api-key-here"
+
+# API key via environment variable
+$env:LEANIX_API_TOKEN = "your-api-key-here"
+dvm-leanix
+
 # Corporate SSL proxy — point at exported CA bundle
 dvm-leanix --ca-bundle "$env:USERPROFILE\.lean-ix\corporate-ca.pem"
 
 # Disable SSL verification (quick test only)
 dvm-leanix --no-verify-ssl
 
-# Use a known token (no browser needed)
+# Use a known Bearer token (no browser needed)
 dvm-leanix --token "eyJhbGci..."
 
 # Different port
@@ -129,25 +138,102 @@ Invoke-RestMethod -Uri http://localhost:8765/token -Method POST `
 
 ---
 
-## LeanIX GraphQL API Reference
+---
 
-Full API documentation: **<https://help.sap.com/docs/leanix/ea/graphql-api>**
+## Technical User Credentials (No Browser Required)
 
-## Example GraphQL Query
+For automated scripts, CI pipelines, or headless environments you can authenticate with a **Technical User API key** instead of a browser session.
+
+### Create a Technical User
+
+1. In your LeanIX workspace go to **Administration → Technical Users**
+2. Click **Create Technical User**, set a name, assign roles
+3. Copy the generated **API key** (shown only once)
+
+### Start the proxy with an API key
+
+```powershell
+# Pass directly
+dvm-leanix --api-token "your-api-key-here"
+
+# Or export as environment variable
+$env:LEANIX_API_TOKEN = "your-api-key-here"
+dvm-leanix
+```
+
+The proxy exchanges the key for a Bearer token via OAuth2 at startup and automatically re-exchanges it whenever the token expires — no browser interaction needed.
+
+### How it works
+
+```
+API key
+  │
+  │  POST /services/mtm/v1/oauth2/token
+  │  auth: ("apitoken", API_KEY)
+  │  body: grant_type=client_credentials
+  ▼
+Bearer access_token
+  │
+  ▼
+server.py (FastAPI on localhost:8765)
+  │  POST /graphql  { query, variables }
+  │  Authorization: Bearer <token>
+  ▼
+https://eu-10.leanix.net/services/pathfinder/v1/graphql
+```
+
+---
+
+## SAP LeanIX GraphQL API
+
+Full reference: **[docs/graphql-api.md](docs/graphql-api.md)**
+
+The SAP LeanIX GraphQL API conforms to the [October 2021 GraphQL specification](https://spec.graphql.org/October2021/).
+
+### Key concepts
+
+| Concept | Detail |
+|---|---|
+| **Fact Sheets** | Core entities: Application, ITComponent, BusinessCapability, Process, Interface, DataObject, Provider, TechnicalStack, UserGroup, Project |
+| **Queries** | Read data — `factSheet(id)`, `allFactSheets(filter, sort, first, after)` |
+| **Mutations** | Write data — `createFactSheet`, `updateFactSheet`, `archiveFactSheet` |
+| **Pagination** | Relay cursor-based (`first` + `after` with `pageInfo.endCursor`) |
+| **Filtering** | `facetFilters` with `OR` / `AND` / `NOR` operators on facet keys |
+
+### GraphQL endpoint
+
+```
+POST https://{HOST}/services/pathfinder/v1/graphql
+Authorization: Bearer {access_token}
+Content-Type: application/json
+```
+
+### Quick example
 
 ```graphql
 {
-  allFactSheets(first: 10) {
+  allFactSheets(factSheetType: Application, first: 10) {
+    totalCount
+    pageInfo { hasNextPage endCursor }
     edges {
-      node {
-        id
-        name
-        type
-      }
+      node { id name displayName lxState completion { percentage } }
     }
   }
 }
 ```
+
+### Error handling
+
+GraphQL always returns HTTP 200. Check the `errors` array in the response body:
+
+```json
+{
+  "data": null,
+  "errors": [{ "message": "No fact sheet found with id '...'" }]
+}
+```
+
+See **[docs/graphql-api.md](docs/graphql-api.md)** for filtering, pagination, mutations, the REST migration guide, and best practices.
 
 ---
 

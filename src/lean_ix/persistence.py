@@ -9,10 +9,8 @@ permissions so other users cannot read it.
 from __future__ import annotations
 
 import json
-import os
 import stat
 from pathlib import Path
-from typing import Optional
 
 
 def _token_file() -> Path:
@@ -49,7 +47,7 @@ def save_token(url: str, token: str) -> None:
     _save_all(data)
 
 
-def load_token(url: str) -> Optional[str]:
+def load_token(url: str) -> str | None:
     """Return the saved Bearer token for *url*, or None if not found."""
     return _load_all().get(url.rstrip("/"))
 

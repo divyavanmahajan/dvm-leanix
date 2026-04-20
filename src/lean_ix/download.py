@@ -36,10 +36,9 @@ import csv
 import io
 import json
 import sys
-from typing import Any, Optional
+from typing import Any
 
 import httpx
-
 
 # ── Safe minimal base fields (always exist on every FactSheet) ──────────────
 # Extended base fields are added dynamically from BaseFactSheet introspection.
@@ -342,8 +341,8 @@ def fetch_all(
     On permission errors, auto-excludes the denied fields and retries.
     """
     records: list[dict] = []
-    cursor: Optional[str] = None
-    total: Optional[int] = None
+    cursor: str | None = None
+    total: int | None = None
     page = 0
     excluded_fields: set[str] = set()
 
@@ -541,8 +540,8 @@ def fetch_all_relations(
     matching the behaviour of :func:`fetch_all`.
     """
     rows: list[dict] = []
-    cursor: Optional[str] = None
-    total: Optional[int] = None
+    cursor: str | None = None
+    total: int | None = None
     page = 0
     excluded_fields: set[str] = set()
     active_fields = list(relation_fields)
@@ -668,8 +667,8 @@ def _prompt_choice(prompt_text: str, options: list[str]) -> list[str]:
 
 def run_download_relations(
     proxy_url: str,
-    type_name: Optional[str],
-    output_path: Optional[str],
+    type_name: str | None,
+    output_path: str | None,
     list_relations: bool,
     ssl_verify: Any = True,
 ) -> None:
@@ -764,7 +763,7 @@ def run_download(
     proxy_url: str,
     type_name: str,
     subtypes: list[str],
-    output_path: Optional[str],
+    output_path: str | None,
     fmt: str,
     list_subtypes: bool,
     list_types: bool,
@@ -863,7 +862,7 @@ def run_download(
               f"{', '.join(sorted(object_subfields))}")
     query = build_query(type_name, type_fields, base_fields, object_subfields)
 
-    print(f"Downloading fact sheets…")
+    print("Downloading fact sheets…")
     try:
         records = fetch_all(
             proxy_url, query, type_name, subtypes, ssl_verify,

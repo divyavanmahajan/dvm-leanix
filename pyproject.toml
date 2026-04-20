@@ -1,6 +1,6 @@
 [project]
 name = "dvm-leanix"
-version = "0.3.2"
+dynamic = ["version"]
 description = "SAP LeanIX GraphQL proxy with browser token extraction via Playwright"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -39,8 +39,25 @@ dvm-leanix = "lean_ix.main:main"
 lean-ix = "lean_ix.main:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/lean_ix/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lean_ix"]
+
+[dependency-groups]
+dev = ["ruff>=0.9"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+ignore = ["E501"]

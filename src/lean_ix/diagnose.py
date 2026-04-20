@@ -10,10 +10,7 @@ import socket
 import ssl
 import subprocess
 import sys
-import tempfile
-import os
 from pathlib import Path
-from typing import Optional
 from urllib.parse import urlparse
 
 
@@ -67,7 +64,7 @@ def check_tcp(host: str, port: int = 443) -> bool:
         return False
 
 
-def check_ssl(host: str, port: int = 443, ca_file: Optional[str] = None, legacy: bool = False) -> bool:
+def check_ssl(host: str, port: int = 443, ca_file: str | None = None, legacy: bool = False) -> bool:
     """Try a raw TLS handshake and show the certificate chain."""
     label = f"custom CA bundle ({ca_file})" if ca_file else "system CA bundle"
     if legacy:
@@ -91,7 +88,7 @@ def check_ssl(host: str, port: int = 443, ca_file: Optional[str] = None, legacy:
                 cert = ssock.getpeercert()
                 subject = dict(x[0] for x in cert.get("subject", []))
                 issuer  = dict(x[0] for x in cert.get("issuer", []))
-                _ok(f"TLS handshake succeeded")
+                _ok("TLS handshake succeeded")
                 _info(f"Protocol : {ssock.version()}")
                 _info(f"Cipher   : {ssock.cipher()[0]}")
                 _info(f"Subject  : {subject.get('commonName', '?')}")
@@ -112,7 +109,7 @@ def check_ssl(host: str, port: int = 443, ca_file: Optional[str] = None, legacy:
 
 def check_ssl_no_verify(host: str, port: int = 443) -> tuple[bool, list[dict]]:
     """Connect without verification to inspect the actual certificate chain."""
-    _section(f"TLS handshake without verification (chain inspection)")
+    _section("TLS handshake without verification (chain inspection)")
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -120,7 +117,7 @@ def check_ssl_no_verify(host: str, port: int = 443) -> tuple[bool, list[dict]]:
     try:
         with socket.create_connection((host, port), timeout=10) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as ssock:
-                der = ssock.getpeercert(binary_form=True)
+                ssock.getpeercert(binary_form=True)
                 _ok("Connected (no verification)")
                 _info(f"Protocol : {ssock.version()}")
                 _info(f"Cipher   : {ssock.cipher()[0]}")
@@ -207,7 +204,7 @@ def check_httpx(url: str, ssl_verify: bool | str = True, legacy: bool = False) -
 # Main diagnostic runner                                                        #
 # --------------------------------------------------------------------------- #
 
-def run_diagnostics(leanix_url: str, ca_bundle: Optional[str] = None) -> None:
+def run_diagnostics(leanix_url: str, ca_bundle: str | None = None) -> None:
     parsed = urlparse(leanix_url)
     host = parsed.hostname or leanix_url
     port = parsed.port or 443
@@ -260,7 +257,7 @@ def run_diagnostics(leanix_url: str, ca_bundle: Optional[str] = None) -> None:
             check_httpx(base_https, ssl_verify=ca_bundle, legacy=True)
 
     # 10. If still failing, try Windows cert store export
-    win_bundle_path: Optional[Path] = None
+    win_bundle_path: Path | None = None
     if not system_ok and not custom_ok and not legacy_ok and sys.platform == "win32":
         lean_ix_dir = Path.home() / ".lean-ix"
         lean_ix_dir.mkdir(exist_ok=True)
@@ -281,12 +278,12 @@ def run_diagnostics(leanix_url: str, ca_bundle: Optional[str] = None) -> None:
         _ok("Legacy SSL mode works!")
         _info("The corporate proxy certificate is missing the 'Authority Key Identifier'")
         _info("extension, which Python 3.13+ rejects by default.")
-        print(f"\n  Run lean-ix with:")
-        print(f"    dvm-leanix --legacy-ssl")
+        print("\n  Run lean-ix with:")
+        print("    dvm-leanix --legacy-ssl")
         return
 
     if custom_ok:
-        _ok(f"SSL verification works with your CA bundle.")
+        _ok("SSL verification works with your CA bundle.")
         print(f"\n  Run lean-ix with:  --ca-bundle \"{ca_bundle}\"")
         return
 
@@ -302,7 +299,7 @@ def run_diagnostics(leanix_url: str, ca_bundle: Optional[str] = None) -> None:
             with socket.create_connection((host, port), timeout=5) as s:
                 with win_ctx.wrap_socket(s, server_hostname=host):
                     _ok("Windows cert store export + legacy mode worked!")
-                    print(f"\n  Run lean-ix with:")
+                    print("\n  Run lean-ix with:")
                     print(f"    --ca-bundle \"{win_path_str}\" --legacy-ssl")
                     return
         except Exception:

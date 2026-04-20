@@ -14,11 +14,10 @@ POST /token/refresh   – re-extract token from connected browser
 
 from __future__ import annotations
 
-import asyncio
 import json
-import threading
 import ssl as _ssl_module
-from typing import Any, Optional, Union
+import threading
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -27,7 +26,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from .graphiql import GRAPHIQL_HTML
 
-
 # --------------------------------------------------------------------------- #
 # App factory                                                                   #
 # --------------------------------------------------------------------------- #
@@ -35,8 +33,9 @@ from .graphiql import GRAPHIQL_HTML
 def build_app(
     leanix_base: str,
     initial_token: str,
-    cdp_url: Optional[str] = None,
-    ssl_verify: Union[bool, str, _ssl_module.SSLContext] = True,
+    cdp_url: str | None = None,
+    ssl_verify: bool | str | _ssl_module.SSLContext = True,
+    api_key: str | None = None,
 ) -> FastAPI:
     """
     Create the FastAPI proxy application.
@@ -44,14 +43,16 @@ def build_app(
     Args:
         leanix_base:   LeanIX workspace base URL,
                        e.g. "https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox"
-        initial_token: Bearer token obtained from the browser session.
-        cdp_url:       Chrome DevTools Protocol endpoint for auto-refresh,
-                       e.g. "http://localhost:9222". Pass None to disable auto-refresh.
-    ssl_verify:    SSL verification mode for upstream requests:
+        initial_token: Bearer token obtained from the browser session or OAuth2 exchange.
+        cdp_url:       Chrome DevTools Protocol endpoint for auto-refresh via browser,
+                       e.g. "http://localhost:9222". Pass None to disable browser refresh.
+        ssl_verify:    SSL verification mode for upstream requests:
                        True            = verify using system/certifi CA bundle (default)
                        False           = disable verification entirely (insecure)
                        str             = path to a PEM CA bundle file
                        ssl.SSLContext  = pre-configured context (e.g. legacy mode)
+        api_key:       LeanIX Technical User API key. When provided, token auto-refresh
+                       uses OAuth2 client-credentials instead of the browser CDP.
     """
     host_part = "/".join(leanix_base.split("/")[:3])  # https://eu-10.leanix.net
     graphql_upstream = f"{host_part}/services/pathfinder/v1/graphql"
@@ -93,12 +94,13 @@ def build_app(
     # Internal helpers                                                     #
     # ------------------------------------------------------------------ #
 
-    async def _try_refresh_token() -> Optional[str]:
+    async def _try_refresh_token() -> str | None:
         """
-        Attempt to re-extract the Bearer token from the connected browser.
-        Returns the new token on success, None if CDP is not configured or fails.
+        Attempt to re-obtain a Bearer token after a 401 response.
+        Preference order: API key OAuth2 → browser CDP → give up.
+        Returns the new token on success, None on failure.
         """
-        if not cdp_url:
+        if not api_key and not cdp_url:
             return None
 
         with _lock:
@@ -107,12 +109,22 @@ def build_app(
             _state["refreshing"] = True
 
         try:
-            print("\n  ⚠  Token expired — attempting auto-refresh via browser CDP…")
-            from .token import extract_token
-            new_token = await extract_token(leanix_base, cdp_url)
+            if api_key:
+                print("\n  ⚠  Token expired — refreshing via Technical User API key…")
+                from .token import get_token_from_api_key
+                ssl_for_refresh: bool | str = (
+                    False if ssl_verify is False
+                    else ssl_verify if isinstance(ssl_verify, str)
+                    else True
+                )
+                new_token = get_token_from_api_key(api_key, leanix_base, ssl_for_refresh)
+            else:
+                print("\n  ⚠  Token expired — attempting auto-refresh via browser CDP…")
+                from .token import extract_token
+                new_token = await extract_token(leanix_base, cdp_url)  # type: ignore[arg-type]
+
             set_token(new_token)
-            # Persist the refreshed token
-            from .persistence import save_token, clear_token
+            from .persistence import clear_token, save_token
             clear_token(leanix_base)
             save_token(leanix_base, new_token)
             print("  ✓  Token refreshed and saved.")
