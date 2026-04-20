@@ -106,7 +106,7 @@ LeanIX GraphQL API docs: **https://help.sap.com/docs/leanix/ea/graphql-api**
 | `--output`, `-o`  | stdout                            | Output file path                                 |
 | `--format`, `-f`  | `json`                            | Output format: `json` or `csv`                   |
 | `--list-types`    | _(off)_                           | List all FactSheet types and exit                |
-| `--list-subtypes` | _(off)_                           | List all category values for `--type` and exit   |
+| `--limit`, `-n`   | _(none)_                          | Stop after N records (for testing)               |
 
 ---
 
@@ -118,6 +118,10 @@ dvm-leanix download --list-types
 
 # Download all Applications as JSON
 dvm-leanix download --type Application --output apps.json
+
+# Download only first 10 Applications (for testing)
+dvm-leanix download --type Application --limit 10 --output sample.json
+dvm-leanix download --type Application -n 10 --output sample.json
 
 # Download only "Business Application" sub-type as CSV
 dvm-leanix download --type Application --subtype "Business Application" --format csv --output apps.csv

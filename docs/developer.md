@@ -345,6 +345,9 @@ dvm-leanix download --list-types
 # Download all Applications as JSON (to file)
 dvm-leanix download --type Application --output apps.json
 
+# Download only first 10 records (for testing)
+dvm-leanix download --type Application --limit 10 --output sample.json
+
 # Download only "Business Application" subtype as CSV
 dvm-leanix download --type Application --subtype "Business Application" --format csv --output apps.csv
 

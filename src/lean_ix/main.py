@@ -8,7 +8,7 @@ Usage
 Options
 -------
     --url           LeanIX workspace base URL
-                    (default: https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox)
+                    (default: https://eu-10.leanix.net/YourInstance)
     --port          Port to listen on (default: 8765)
     --connect       Chrome DevTools Protocol endpoint to connect to an existing
                     browser session (default: http://localhost:9222)
@@ -29,7 +29,7 @@ from pathlib import Path
 
 import uvicorn
 
-DEFAULT_URL = "https://eu-10.leanix.net/VolvoInformationTechnologyABSandbox"
+DEFAULT_URL = "https://eu-10.leanix.net/YourInstance"
 DEFAULT_PORT = 8765
 DEFAULT_CDP = "http://localhost:9222"
 
@@ -247,6 +247,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=False,
         help="List all available relationship fields for --type and exit",
     )
+    dl.add_argument(
+        "--limit", "-n",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Stop after downloading N records (useful for testing)",
+    )
 
     # ── backward compat: top-level flags still work (no subcommand) ───
     # Add serve flags at the top level too so existing invocations keep working
@@ -354,6 +361,7 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "download":
         ssl_verify = _resolve_ssl(args)
+        limit = getattr(args, "limit", None)
         if getattr(args, "relations", False) or getattr(args, "list_relations", False):
             from .download import run_download_relations
             run_download_relations(
@@ -362,6 +370,7 @@ def main(argv: list[str] | None = None) -> None:
                 output_path=args.output,
                 list_relations=getattr(args, "list_relations", False),
                 ssl_verify=ssl_verify,
+                limit=limit,
             )
         else:
             from .download import run_download
@@ -374,6 +383,7 @@ def main(argv: list[str] | None = None) -> None:
                 list_subtypes=args.list_subtypes,
                 list_types=args.list_types,
                 ssl_verify=ssl_verify,
+                limit=limit,
             )
         return
 

@@ -334,11 +334,13 @@ def fetch_all(
     type_fields: list[dict] | None = None,
     base_fields: list[str] | None = None,
     object_subfields: dict[str, list[str]] | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
     """
     Page through allFactSheets and return a flat list of node dicts.
     Filters by ``category`` (case-insensitive) if *subtypes* is non-empty.
     On permission errors, auto-excludes the denied fields and retries.
+    Stops early once *limit* records have been collected (if given).
     """
     records: list[dict] = []
     cursor: str | None = None
@@ -392,8 +394,16 @@ def fetch_all(
                 if cat not in subtypes_lc:
                     continue
             records.append(node)
+            if limit is not None and len(records) >= limit:
+                break
 
         page_info = conn.get("pageInfo") or {}
+
+        if verbose:
+            print(f"  Page {page}: {len(records)} matching records fetched so far…", end="\r")
+
+        if limit is not None and len(records) >= limit:
+            break
 
         if verbose:
             print(f"  Page {page}: {len(records)} matching records fetched so far…", end="\r")
@@ -523,6 +533,7 @@ def fetch_all_relations(
     relation_fields: list[dict],
     ssl_verify: Any = True,
     verbose: bool = True,
+    limit: int | None = None,
 ) -> list[dict]:
     """Paginate through allFactSheets and return a flat list of relation rows.
 
@@ -538,6 +549,7 @@ def fetch_all_relations(
 
     Permission-denied relation fields are auto-excluded and pagination restarts,
     matching the behaviour of :func:`fetch_all`.
+    Stops early once *limit* rows have been collected (if given).
     """
     rows: list[dict] = []
     cursor: str | None = None
@@ -603,8 +615,20 @@ def fetch_all_relations(
                             "target_id": target_id,
                             "target_displayName": target_display,
                         })
+                        if limit is not None and len(rows) >= limit:
+                            break
+                if limit is not None and len(rows) >= limit:
+                    break
+            if limit is not None and len(rows) >= limit:
+                break
 
         page_info = conn.get("pageInfo") or {}
+
+        if verbose:
+            print(f"  Page {page}: {len(rows)} relation rows so far…", end="\r")
+
+        if limit is not None and len(rows) >= limit:
+            break
 
         if verbose:
             print(f"  Page {page}: {len(rows)} relation rows so far…", end="\r")
@@ -671,6 +695,7 @@ def run_download_relations(
     output_path: str | None,
     list_relations: bool,
     ssl_verify: Any = True,
+    limit: int | None = None,
 ) -> None:
     """Orchestrate a relationship download: select type → select relations → paginate → write CSV."""
 
@@ -737,7 +762,8 @@ def run_download_relations(
     query = build_relations_query(type_name, relation_fields)
     try:
         rows = fetch_all_relations(
-            proxy_url, query, type_name, relation_fields, ssl_verify, verbose=True
+            proxy_url, query, type_name, relation_fields, ssl_verify, verbose=True,
+            limit=limit,
         )
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -768,6 +794,7 @@ def run_download(
     list_subtypes: bool,
     list_types: bool,
     ssl_verify: Any = True,
+    limit: int | None = None,
 ) -> None:
     # ── list available FactSheet types ──────────────────────────────────────
     if list_types:
@@ -789,6 +816,8 @@ def run_download(
     print(f"  FactSheet type   : {type_name}")
     if subtypes:
         print(f"  Subtype filter   : {', '.join(subtypes)}")
+    if limit is not None:
+        print(f"  Limit            : {limit} records")
     print()
 
     # ── Introspect schema ───────────────────────────────────────────────────
@@ -842,7 +871,8 @@ def run_download(
         }"""
         try:
             records = fetch_all(
-                proxy_url, minimal_q, type_name, [], ssl_verify, verbose=True
+                proxy_url, minimal_q, type_name, [], ssl_verify, verbose=True,
+                limit=limit,
             )
         except RuntimeError as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -867,7 +897,7 @@ def run_download(
         records = fetch_all(
             proxy_url, query, type_name, subtypes, ssl_verify,
             verbose=True, type_fields=type_fields, base_fields=base_fields,
-            object_subfields=object_subfields,
+            object_subfields=object_subfields, limit=limit,
         )
     except RuntimeError as exc:
         print(f"Error: {exc}", file=sys.stderr)
