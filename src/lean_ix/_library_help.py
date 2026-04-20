@@ -48,6 +48,7 @@ run_download(
     fmt="csv",              # "csv" or "json"
     list_subtypes=False,
     list_types=False,
+    limit=None,             # int to stop early, e.g. limit=10 for testing
 )
 ```
 
@@ -62,6 +63,21 @@ run_download(
     fmt="csv",
     list_subtypes=False,
     list_types=False,
+)
+```
+
+### Limiting the number of records (for testing)
+
+```python
+run_download(
+    proxy_url="http://localhost:8765/graphql",
+    type_name="Application",
+    subtypes=[],
+    output_path="sample.csv",
+    fmt="csv",
+    list_subtypes=False,
+    list_types=False,
+    limit=10,   # stop after 10 records — avoids fetching the full dataset
 )
 ```
 
@@ -109,6 +125,7 @@ records = fetch_all(
     verbose=True,         # prints progress to stdout
     type_fields=type_fields,
     base_fields=base_fields,
+    limit=None,           # set to an int to stop early, e.g. limit=10
 )
 
 # 4. Use the records
@@ -140,6 +157,7 @@ run_download_relations(
     type_name="Application",    # required when calling as library (no interactive prompt)
     output_path="app_relations.csv",  # None = auto-generate {Type}_relations.csv
     list_relations=False,
+    limit=None,                 # int to stop early, e.g. limit=50 for testing
 )
 ```
 
@@ -174,6 +192,7 @@ rows = fetch_all_relations(
     type_name="Application",
     relation_fields=relation_fields,
     verbose=True,
+    limit=None,   # set to an int to stop early, e.g. limit=50
 )
 
 # 4. Each row is a dict with these keys:
@@ -219,7 +238,7 @@ import ssl
 # Default — system CA bundle
 ssl_verify = True
 
-# Legacy mode — fixes corporate SSL inspection proxies (Volvo / Prisma)
+# Legacy mode — fixes corporate SSL inspection proxies (Prisma)
 ctx = ssl.create_default_context()
 ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
 ssl_verify = ctx
